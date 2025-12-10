@@ -107,17 +107,8 @@ impl PelicanInfo {
         };
 
         let director_info = get_director_info(path.to_string());
-
         let headers = director_info.headers;
-        let origins = match headers.get("link") {
-            Some(links) => handle_link_header(links.to_str()?)?,
-            None => {
-                return Err(Box::new(MyError::Pelican(
-                    "No link header when locating origins".into(),
-                )));
-            }
-        };
-        log::info!("origin urls: {:?}", origins);
+
         let namespace = match headers.get("x-pelican-namespace") {
             Some(parts) => handle_namespace_header(parts.to_str()?)?,
             None => {
@@ -128,8 +119,33 @@ impl PelicanInfo {
         };
         log::info!("pelican namespace: {}", namespace);
 
+        let origins = match headers.get("link") {
+            Some(links) => {
+                let mut ret = Vec::new();
+                for link in handle_link_header(links.to_str()?)? {
+                    match link.split_inclusive(namespace).next() {
+                        Some(prefix) => {
+                            ret.push(prefix.to_string());
+                        }
+                        None => {
+                            return Err(Box::new(MyError::Pelican(
+                                "Origin link does not contain namespace".into(),
+                            )));
+                        }
+                    }
+                }
+                ret
+            }
+            None => {
+                return Err(Box::new(MyError::Pelican(
+                    "No link header when locating origins".into(),
+                )));
+            }
+        };
+        log::info!("origin urls: {:?}", origins);
+
         Ok(Self {
-            origins: origins.iter().map(|x| x.to_string()).collect(),
+            origins,
             osdf_prefix: format!("{}{}", OSDF_URL_PREFIX, namespace),
         })
     }
