@@ -133,6 +133,23 @@ jobs:
           cargo set-version ${VERSION#v}
 
       - if: steps.next-version.outputs.version != ''
+        id: build
+        name: Get RPM
+        env:
+          VERSION: ${{ steps.next-version.outputs.version }}
+        run: |
+          export TARGET="x86_64-unknown-linux-musl"
+          export CC_${TARGET//-/_}=gcc
+          rustup update stable && rustup default stable
+          if [ ! -f ~/.cargo/bin/cargo-generate-rpm ]; then
+            cargo install cargo-generate-rpm
+          fi
+          rustup target add $TARGET
+          cargo build --release --target $TARGET
+          strip -s target/$TARGET/release/dumb_pelican_client
+          mv target/$TARGET/release/dumb_pelican_client dumb_pelican_client
+
+      - if: steps.next-version.outputs.version != ''
         uses: actions/upload-artifact@v4
         with:
           name: binaries
