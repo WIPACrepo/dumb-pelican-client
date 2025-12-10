@@ -1,0 +1,153 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - '**'
+    tags-ignore:
+      - '**'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+
+  lint:
+    name: Lint
+    # only run on branches
+    if: format('refs/heads/{0}', github.event.repository.default_branch) != github.ref
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git target
+          key: lint-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup update stable && rustup default stable
+      - name: Run cargo install cargo-machete
+        run: |
+          if [ ! -f ~/.cargo/bin/cargo-machete ]; then
+            cargo install cargo-machete
+          fi
+      - run: cargo machete
+      - run: cargo fmt --all -- --check
+      - run: cargo generate-lockfile --locked
+      - run: cargo clippy --locked -- --deny warnings
+      - run: cargo verify-project --locked
+      - run: cargo doc --no-deps
+
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/bin
+            ~/.cargo/registry
+            ~/.cargo/git target
+          key: lint-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+      - run: rustup update stable && rustup default stable
+      - run: cargo build --verbose
+      - run: cargo test --verbose
+
+  coverage:
+    name: Coverage
+    # only run on branches
+    if: format('refs/heads/{0}', github.event.repository.default_branch) != github.ref
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: coverage-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            coverage-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            coverage-cache-${{ runner.os }}-
+      - run: rustup update stable && rustup default stable
+      - name: Run cargo install cargo-tarpaulin
+        run: |
+          if [ ! -f ~/.cargo/bin/cargo-tarpaulin ]; then
+            cargo install cargo-tarpaulin
+          fi
+      - run: cargo tarpaulin --fail-immediately --fail-under 20 --locked
+
+  build:
+    # only run on main/master/default
+    if: format('refs/heads/{0}', github.event.repository.default_branch) == github.ref
+    needs: [
+      test
+    ]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      next-version: ${{ steps.next-version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # required to see tags and commits
+          ref: ${{ github.sha }}  # lock to triggered commit ('github.ref' is dynamic)
+
+      # copied from tag-and-release
+      - name: Determine next version
+        uses: WIPACrepo/wipac-dev-next-version-action@v1.3
+        id: next-version
+        with:
+          force-patch-if-no-commit-token: true
+          ignore-paths: |
+            **/README.md
+            .github/**
+            .gitignore
+            dependencies-logs/**
+            tests/**
+
+      - if: steps.next-version.outputs.version != ''
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin
+          key: coverage-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            coverage-cache-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+            coverage-cache-${{ runner.os }}-
+
+      - name: Add version string
+        if: steps.next-version.outputs.version != ''
+        env:
+          VERSION: ${{ steps.next-version.outputs.version }}
+        run: |
+          if [ ! -f ~/.cargo/bin/cargo-set-version ]; then
+            cargo install cargo-set-version
+          fi
+          cargo set-version ${VERSION#v}
+
+      - if: steps.next-version.outputs.version != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries
+          path: |
+            dumb_pelican_client
+
+  tag-and-release:
+    # only run on main/default branch
+    needs: [ build ]
+    if: format('refs/heads/{0}', github.event.repository.default_branch) == github.ref && needs.build.outputs.next-version != ''
+    uses: WIPACrepo/wipac-dev-workflows/.github/workflows/tag-and-release.yml@v1.5
+    permissions: # for GITHUB_TOKEN
+      contents: write
+    with:
+      project-type: rust
+      release-artifacts: |
+        rpm
+        binaries
