@@ -102,9 +102,7 @@ impl PelicanInfo {
         let path = match url.split_once(OSDF_URL_PREFIX) {
             Some((_, s2)) => s2,
             None => {
-                return Err(Box::new(MyError::Pelican(
-                    "url is not an OSDF url".into(),
-                )));
+                return Err(Box::new(MyError::Pelican("url is not an OSDF url".into())));
             }
         };
 
@@ -144,9 +142,7 @@ impl PelicanInfo {
         let mut rng = rand::rng();
         match self.origins.as_slice().choose(&mut rng) {
             Some(e) => Ok(e),
-            None => Err(Box::new(MyError::Pelican(
-                "No origins available".into(),
-            ))),
+            None => Err(Box::new(MyError::Pelican("No origins available".into()))),
         }
     }
 }
