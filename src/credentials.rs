@@ -4,14 +4,16 @@ use std::fs;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::MyError;
-use crate::transfer::Transfer;
 use crate::pelican::PelicanInfo;
+use crate::transfer::Transfer;
 
 fn get_cred_dir() -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let dir_path = match env::var("_CONDOR_CREDS") {
         Ok(val) => val,
         Err(_) => {
-            return Err(Box::new(MyError::CredentialsError("_CONDOR_CREDS env variable not set".into())));
+            return Err(Box::new(MyError::Credentials(
+                "_CONDOR_CREDS env variable not set".into(),
+            )));
         }
     };
     log::info!("Reading cred directory: {}", dir_path);
@@ -22,12 +24,16 @@ fn get_cred_dir() -> Result<Vec<String>, Box<dyn std::error::Error>> {
             for entry in entries {
                 match entry {
                     Ok(dir_entry) => {
-                        if let Some(filename) = dir_entry.file_name().to_str() && filename.ends_with(".use") {
+                        if let Some(filename) = dir_entry.file_name().to_str()
+                            && filename.ends_with(".use")
+                        {
                             ret.push(dir_entry.path().to_str().unwrap().to_string())
                         }
                     }
                     Err(_) => {
-                        return Err(Box::new(MyError::CredentialsError("Error reading _CONDOR_CREDS dir".into())));
+                        return Err(Box::new(MyError::Credentials(
+                            "Error reading _CONDOR_CREDS dir".into(),
+                        )));
                     }
                 }
             }
@@ -52,6 +58,7 @@ pub(crate) struct Credential {
 pub struct Credentials(Vec<Credential>);
 
 impl Credentials {
+    #[allow(dead_code)]
     pub fn new(data: Vec<Credential>) -> Self {
         Credentials(data)
     }
@@ -68,30 +75,45 @@ impl Credentials {
         Ok(Self(ret))
     }
 
-    pub fn get_correct_cred(&self, transfer: &Transfer, info: &PelicanInfo) -> Result<&Credential, Box<dyn Error>> {
+    pub fn get_correct_cred(
+        &self,
+        transfer: &Transfer,
+        info: &PelicanInfo,
+    ) -> Result<&Credential, Box<dyn Error>> {
         let prefix = info.get_osdf_prefix();
         let path = match transfer.url.split_once(prefix) {
             Some(s) => s.1,
             None => {
-                return Err(Box::new(MyError::CredentialsError("url does not match OSDF prefix".into())));
+                return Err(Box::new(MyError::Credentials(
+                    "url does not match OSDF prefix".into(),
+                )));
             }
         };
         let scope_options = match transfer.mode {
             crate::transfer::Verb::Get => vec!["storage.read"],
             crate::transfer::Verb::Put => vec!["storage.create", "storage.modify"],
         };
-        log::info!("getting correct cred to match scope {:?} and path: {}", scope_options, path);
+        log::info!(
+            "getting correct cred to match scope {:?} and path: {}",
+            scope_options,
+            path
+        );
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f32();
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
         let mut expired_cred = None;
         for cred in self.0.iter() {
             for scope in cred.scope.iter() {
                 if let Some((pre, post)) = scope.split_once(':')
-                    && scope_options.contains(&pre) && path.starts_with(post) {
+                    && scope_options.contains(&pre)
+                    && path.starts_with(post)
+                {
                     if cred.expires_at <= now {
                         expired_cred = Some(cred);
                     } else {
-                        return Ok(cred)
+                        return Ok(cred);
                     }
                 }
             }
@@ -101,11 +123,12 @@ impl Credentials {
             log::warn!("only valid cred is expired. will try using it anyway");
             Ok(cred)
         } else {
-            Err(Box::new(MyError::CredentialsError("No matching credentials for url".into())))
+            Err(Box::new(MyError::Credentials(
+                "No matching credentials for url".into(),
+            )))
         }
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -118,16 +141,19 @@ mod tests {
     fn test_credentials_from_condor() {
         test_logger();
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f32();
-        let test_cred = Credential{
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
+        let test_cred = Credential {
             access_token: "token".into(),
             token_type: "bearer".into(),
             expires_in: 3600,
-            expires_at: now+3600.,
+            expires_at: now + 3600.,
             scope: vec![
                 "storage.read:/read/scope".into(),
-                "storage.modify:/write/scope".into()
-            ]
+                "storage.modify:/write/scope".into(),
+            ],
         };
 
         let tmp_dir = TempDir::new().unwrap();
@@ -146,16 +172,19 @@ mod tests {
     fn test_get_correct_cred() {
         test_logger();
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f32();
-        let test_cred = Credential{
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
+        let test_cred = Credential {
             access_token: "token".into(),
             token_type: "bearer".into(),
             expires_in: 3600,
-            expires_at: now+3600.,
+            expires_at: now + 3600.,
             scope: vec![
                 "storage.read:/read/scope".into(),
-                "storage.modify:/write/scope".into()
-            ]
+                "storage.modify:/write/scope".into(),
+            ],
         };
 
         let creds = Credentials(vec![test_cred.clone()]);
@@ -164,11 +193,11 @@ mod tests {
         let mut transfer = Transfer::new(
             "url://namespace/read/scope/file.bin".into(),
             file_path.path().to_str().unwrap().into(),
-            Verb::Get
+            Verb::Get,
         );
-        let info = PelicanInfo{
+        let info = PelicanInfo {
             origins: vec!["http://origin".into()],
-            osdf_prefix: "url://namespace".into()
+            osdf_prefix: "url://namespace".into(),
         };
 
         let out_cred = creds.get_correct_cred(&transfer, &info).unwrap();
@@ -182,16 +211,19 @@ mod tests {
     fn test_get_correct_cred_expired() {
         test_logger();
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f32();
-        let test_cred = Credential{
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
+        let test_cred = Credential {
             access_token: "token".into(),
             token_type: "bearer".into(),
             expires_in: 3600,
-            expires_at: now-3600.,
+            expires_at: now - 3600.,
             scope: vec![
                 "storage.read:/read/scope".into(),
-                "storage.modify:/write/scope".into()
-            ]
+                "storage.modify:/write/scope".into(),
+            ],
         };
 
         let creds = Credentials(vec![test_cred.clone()]);
@@ -200,11 +232,11 @@ mod tests {
         let transfer = Transfer::new(
             "url://namespace/read/scope/file.bin".into(),
             file_path.path().to_str().unwrap().into(),
-            Verb::Get
+            Verb::Get,
         );
-        let info = PelicanInfo{
+        let info = PelicanInfo {
             origins: vec!["http://origin".into()],
-            osdf_prefix: "url://namespace".into()
+            osdf_prefix: "url://namespace".into(),
         };
 
         let out_cred = creds.get_correct_cred(&transfer, &info).unwrap();

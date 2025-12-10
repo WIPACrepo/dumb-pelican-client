@@ -1,15 +1,14 @@
 mod credentials;
 mod error;
 mod logging;
-mod transfer;
 mod pelican;
+mod transfer;
 
 use std::backtrace::Backtrace;
 use std::error::Error;
 use std::process::ExitCode;
 
 use clap::{Parser, Subcommand};
-
 
 /// Simple program to greet a person
 #[derive(Parser, Debug)]
@@ -27,27 +26,20 @@ struct Cli {
 
 #[derive(Subcommand, Debug)]
 enum Commands {
-    Object(ObjectCommands)
+    Object(ObjectCommands),
 }
 
 #[derive(Parser, Debug)]
 struct ObjectCommands {
     #[command(subcommand)]
-    command: ObjectSubcommands
+    command: ObjectSubcommands,
 }
 
 #[derive(Subcommand, Debug)]
 enum ObjectSubcommands {
-    Get {
-        url: String,
-        filename: String,
-    },
-    Put {
-        filename: String,
-        url: String,
-    },
+    Get { url: String, filename: String },
+    Put { filename: String, url: String },
 }
-
 
 fn run() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
@@ -65,21 +57,13 @@ fn run() -> Result<(), Box<dyn Error>> {
     // get transfer info
     let transfer = match &cli.command {
         Commands::Object(sub) => match &sub.command {
-            ObjectSubcommands::Get{ url, filename} => {
-                transfer::Transfer::new(
-                    url.clone(),
-                    filename.clone(),
-                    transfer::Verb::Get,
-                )
-            },
-            ObjectSubcommands::Put{ filename, url} => {
-                transfer::Transfer::new(
-                    url.clone(),
-                    filename.clone(),
-                    transfer::Verb::Put,
-                )
+            ObjectSubcommands::Get { url, filename } => {
+                transfer::Transfer::new(url.clone(), filename.clone(), transfer::Verb::Get)
             }
-        }
+            ObjectSubcommands::Put { filename, url } => {
+                transfer::Transfer::new(url.clone(), filename.clone(), transfer::Verb::Put)
+            }
+        },
     };
 
     // get Pelican info

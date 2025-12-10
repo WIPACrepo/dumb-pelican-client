@@ -7,21 +7,20 @@ use crate::credentials::Credentials;
 use crate::error::MyError;
 use crate::pelican::PelicanInfo;
 
-
 pub(crate) enum Verb {
     Put,
-    Get
+    Get,
 }
 
 pub(crate) struct Transfer {
     pub url: String,
     filename: String,
-    pub mode: Verb
+    pub mode: Verb,
 }
 
 impl Transfer {
     pub fn new(url: String, filename: String, mode: Verb) -> Self {
-        Transfer{
+        Transfer {
             url,
             filename,
             mode,
@@ -32,10 +31,10 @@ impl Transfer {
         let origin_url = origin.choose_origin()?;
         let prefix = origin.get_osdf_prefix();
         match self.url.split_once(prefix) {
-            Some((_, suffix)) => {
-                Ok(Url::parse(origin_url)?.join(suffix)?.to_string())
-            },
-            None => Err(Box::new(MyError::TransferError("url does not match OSDF prefix".into())))
+            Some((_, suffix)) => Ok(Url::parse(origin_url)?.join(suffix)?.to_string()),
+            None => Err(Box::new(MyError::Transfer(
+                "url does not match OSDF prefix".into(),
+            ))),
         }
     }
 
@@ -50,18 +49,27 @@ impl Transfer {
             .build()
             .expect("Client should build");
 
-        let do_auth = |x: RequestBuilder| x.header(reqwest::header::AUTHORIZATION, format!("Bearer {}", cred.access_token));
+        let do_auth = |x: RequestBuilder| {
+            x.header(
+                reqwest::header::AUTHORIZATION,
+                format!("Bearer {}", cred.access_token),
+            )
+        };
 
         let result = match self.mode {
             Verb::Get => {
                 let mut file = std::fs::File::create(&self.filename)?;
                 let mut ret = do_auth(http_client.get(final_url)).send()?;
                 if !ret.status().is_success() {
-                    return Err(Box::new(MyError::TransferError(format!("Error getting file. status {}, body {}", ret.status(), ret.text().unwrap_or("<no_body>".into())))));
+                    return Err(Box::new(MyError::Transfer(format!(
+                        "Error getting file. status {}, body {}",
+                        ret.status(),
+                        ret.text().unwrap_or("<no_body>".into())
+                    ))));
                 }
                 ret.copy_to(&mut file)?;
                 ret
-            },
+            }
             Verb::Put => {
                 let file = std::fs::File::open(&self.filename)?;
                 do_auth(http_client.put(final_url).body(file)).send()?
@@ -70,18 +78,23 @@ impl Transfer {
 
         // Verify response
         if !result.status().is_success() {
-            return Err(Box::new(MyError::TransferError(format!("Error transferring file. status {}, body {}", result.status(), result.text().unwrap_or("<no_body>".into())))));
+            return Err(Box::new(MyError::Transfer(format!(
+                "Error transferring file. status {}, body {}",
+                result.status(),
+                result.text().unwrap_or("<no_body>".into())
+            ))));
         }
 
         Ok(())
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
-    use std::{io::{Read, Write}, time::{SystemTime, UNIX_EPOCH}};
+    use std::{
+        io::{Read, Write},
+        time::{SystemTime, UNIX_EPOCH},
+    };
 
     use httpmock::prelude::*;
     use tempfile::NamedTempFile;
@@ -97,11 +110,11 @@ mod tests {
         let transfer = Transfer::new(
             "url://namespace/read/scope/file.bin".into(),
             file_path.path().to_str().unwrap().into(),
-            Verb::Get
+            Verb::Get,
         );
-        let info = PelicanInfo{
+        let info = PelicanInfo {
             origins: vec!["http://origin".into()],
-            osdf_prefix: "url://namespace".into()
+            osdf_prefix: "url://namespace".into(),
         };
 
         let ret = transfer.get_origin_url(&info).unwrap();
@@ -116,17 +129,17 @@ mod tests {
         let transfer = Transfer::new(
             "url://namespace/read/scope/file.bin".into(),
             file_path.path().to_str().unwrap().into(),
-            Verb::Get
+            Verb::Get,
         );
-        let info = PelicanInfo{
+        let info = PelicanInfo {
             origins: vec!["http://origin/".into()],
-            osdf_prefix: "url://namespace".into()
+            osdf_prefix: "url://namespace".into(),
         };
 
         let ret = transfer.get_origin_url(&info).unwrap();
         assert_eq!(ret, "http://origin/read/scope/file.bin");
     }
-    
+
     #[test]
     fn test_execute_get() {
         test_logger();
@@ -137,20 +150,22 @@ mod tests {
         let mock = server.mock(|when, then| {
             when.path("/read/scope/file.bin")
                 .header("Authorization", "Bearer token");
-            then.status(200)
-                .body(TEST_DATA);
+            then.status(200).body(TEST_DATA);
         });
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f32();
-        let test_cred = Credential{
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
+        let test_cred = Credential {
             access_token: "token".into(),
             token_type: "bearer".into(),
             expires_in: 3600,
-            expires_at: now+3600.,
+            expires_at: now + 3600.,
             scope: vec![
                 "storage.read:/read/scope".into(),
-                "storage.modify:/write/scope".into()
-            ]
+                "storage.modify:/write/scope".into(),
+            ],
         };
         let creds = Credentials::new(vec![test_cred.clone()]);
 
@@ -158,11 +173,11 @@ mod tests {
         let transfer = Transfer::new(
             "url://namespace/read/scope/file.bin".into(),
             file_path.path().to_str().unwrap().into(),
-            Verb::Get
+            Verb::Get,
         );
-        let info = PelicanInfo{
+        let info = PelicanInfo {
             origins: vec![server.url("/")],
-            osdf_prefix: "url://namespace".into()
+            osdf_prefix: "url://namespace".into(),
         };
 
         transfer.execute(&creds, &info).unwrap();
@@ -173,7 +188,7 @@ mod tests {
         file_path.as_file().read_to_string(&mut data).unwrap();
         assert_eq!(data, TEST_DATA);
     }
-    
+
     #[test]
     fn test_execute_put() {
         test_logger();
@@ -188,16 +203,19 @@ mod tests {
             then.status(200);
         });
 
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f32();
-        let test_cred = Credential{
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_secs_f32();
+        let test_cred = Credential {
             access_token: "token".into(),
             token_type: "bearer".into(),
             expires_in: 3600,
-            expires_at: now+3600.,
+            expires_at: now + 3600.,
             scope: vec![
                 "storage.read:/read/scope".into(),
-                "storage.modify:/write/scope".into()
-            ]
+                "storage.modify:/write/scope".into(),
+            ],
         };
         let creds = Credentials::new(vec![test_cred.clone()]);
 
@@ -207,11 +225,11 @@ mod tests {
         let transfer = Transfer::new(
             "url://namespace/write/scope/file.bin".into(),
             file_path.path().to_str().unwrap().into(),
-            Verb::Put
+            Verb::Put,
         );
-        let info = PelicanInfo{
+        let info = PelicanInfo {
             origins: vec![server.url("/")],
-            osdf_prefix: "url://namespace".into()
+            osdf_prefix: "url://namespace".into(),
         };
 
         transfer.execute(&creds, &info).unwrap();
