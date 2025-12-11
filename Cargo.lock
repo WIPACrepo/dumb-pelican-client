@@ -355,7 +355,6 @@ dependencies = [
  "stderrlog",
  "temp-env",
  "tempfile",
- "url",
 ]
 
 [[package]]

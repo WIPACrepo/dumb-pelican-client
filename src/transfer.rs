@@ -1,11 +1,18 @@
 use std::error::Error;
 
 use reqwest::blocking::RequestBuilder;
-use url::Url;
 
 use crate::credentials::Credentials;
 use crate::error::MyError;
 use crate::pelican::PelicanInfo;
+
+fn url_join(a: &str, b: &str) -> String {
+    if a.ends_with('/') {
+        format!("{}{}", a, b.trim_start_matches('/'))
+    } else {
+        format!("{}/{}", a, b.trim_start_matches('/'))
+    }
+}
 
 pub(crate) enum Verb {
     Put,
@@ -29,9 +36,11 @@ impl Transfer {
 
     fn get_origin_url(&self, origin: &PelicanInfo) -> Result<String, Box<dyn Error>> {
         let origin_url = origin.choose_origin()?;
+        log::debug!("chosen origin: {}", origin_url);
         let prefix = origin.get_osdf_prefix();
+        log::debug!("osdf prefix: {}", prefix);
         match self.url.split_once(prefix) {
-            Some((_, suffix)) => Ok(Url::parse(origin_url)?.join(suffix)?.to_string()),
+            Some((_, suffix)) => Ok(url_join(origin_url, suffix)),
             None => Err(Box::new(MyError::Transfer(
                 "url does not match OSDF prefix".into(),
             ))),
@@ -197,7 +206,7 @@ mod tests {
 
         let server = MockServer::start();
         let mock = server.mock(|when, then| {
-            when.path("/write/scope/file.bin")
+            when.path("/org/write/scope/file.bin")
                 .header("Authorization", "Bearer token")
                 .body(TEST_DATA);
             then.status(200);
@@ -223,13 +232,13 @@ mod tests {
         file_path.as_file().write_all(TEST_DATA.as_bytes()).unwrap();
 
         let transfer = Transfer::new(
-            "url://namespace/write/scope/file.bin".into(),
+            "url://namespace/org/write/scope/file.bin".into(),
             file_path.path().to_str().unwrap().into(),
             Verb::Put,
         );
         let info = PelicanInfo {
-            origins: vec![server.url("/")],
-            osdf_prefix: "url://namespace".into(),
+            origins: vec![server.url("/org")],
+            osdf_prefix: "url://namespace/org".into(),
         };
 
         transfer.execute(&creds, &info).unwrap();

@@ -6,7 +6,7 @@ use log4rs::{
     encode::pattern::PatternEncoder,
 };
 
-pub const LOG_DEFAULT_LEVEL: &str = "warning";
+pub const LOG_DEFAULT_LEVEL: &str = "warn";
 const LOG_FORMAT: &str = "{d(%Y-%m-%dT%H:%M:%S%.3f)} {l} {M:<24} - {m}{n}";
 
 fn log_to_stderr(log_verbosity: log::LevelFilter) -> Result<log4rs::Handle, Box<dyn Error>> {
