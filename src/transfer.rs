@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::time::Duration;
 
 use reqwest::blocking::RequestBuilder;
 
@@ -47,28 +48,26 @@ impl Transfer {
         }
     }
 
-    pub fn execute(&self, creds: &Credentials, origin: &PelicanInfo) -> Result<(), Box<dyn Error>> {
-        let cred = creds.get_correct_cred(self, origin)?;
+    fn do_transfer(
+        &self,
+        origin: &PelicanInfo,
+        http_client: &reqwest::blocking::Client,
+    ) -> Result<(), Box<dyn Error>> {
         let final_url = self.get_origin_url(origin)?;
         log::info!("using final url {}", final_url);
 
-        let http_client = reqwest::blocking::ClientBuilder::new()
-            // Following redirects opens the client up to SSRF vulnerabilities.
-            .redirect(reqwest::redirect::Policy::none())
-            .build()
-            .expect("Client should build");
-
-        let do_auth = |x: RequestBuilder| {
-            x.header(
-                reqwest::header::AUTHORIZATION,
-                format!("Bearer {}", cred.access_token),
-            )
+        let send = |x: RequestBuilder| match x.send() {
+            Ok(x) => Ok(x),
+            Err(e) => Err(Box::new(MyError::Transfer(format!(
+                "Error sending the request: {:?}",
+                e
+            )))),
         };
 
         let result = match self.mode {
             Verb::Get => {
                 let mut file = std::fs::File::create(&self.filename)?;
-                let mut ret = do_auth(http_client.get(final_url)).send()?;
+                let mut ret = send(http_client.get(final_url))?;
                 if !ret.status().is_success() {
                     return Err(Box::new(MyError::Transfer(format!(
                         "Error getting file. status {}, body {}",
@@ -81,7 +80,7 @@ impl Transfer {
             }
             Verb::Put => {
                 let file = std::fs::File::open(&self.filename)?;
-                do_auth(http_client.put(final_url).body(file)).send()?
+                send(http_client.put(final_url).body(file))?
             }
         };
 
@@ -94,6 +93,40 @@ impl Transfer {
             ))));
         }
 
+        Ok(())
+    }
+
+    pub fn execute(&self, creds: &Credentials, origin: &PelicanInfo) -> Result<(), Box<dyn Error>> {
+        let cred = creds.get_correct_cred(self, origin)?;
+
+        let mut headers = reqwest::header::HeaderMap::new();
+        let mut auth_value = reqwest::header::HeaderValue::from_str(
+            format!("Bearer {}", cred.access_token).as_str(),
+        )?;
+        auth_value.set_sensitive(true);
+        headers.insert(reqwest::header::AUTHORIZATION, auth_value);
+
+        let http_client = reqwest::blocking::ClientBuilder::new()
+            .redirect(reqwest::redirect::Policy::none())
+            .timeout(Duration::from_secs(3600))
+            .connect_timeout(Duration::from_secs(60))
+            .default_headers(headers)
+            .build()
+            .expect("HTTP Client should build");
+
+        for retries in 0..5 {
+            log::info!("Sending request. Retry count={}", retries);
+            match self.do_transfer(origin, &http_client) {
+                Ok(_) => return Ok(()),
+                Err(e) => {
+                    if retries > 4 {
+                        return Err(e);
+                    } else {
+                        log::warn!("Error in transfer (retry count {}): {:?}", retries, e);
+                    }
+                }
+            }
+        }
         Ok(())
     }
 }

@@ -146,7 +146,7 @@ jobs:
           fi
           rustup target add $TARGET
           cargo build --release --target $TARGET
-          strip -s target/$TARGET/release/dumb_pelican_client
+          #strip -s target/$TARGET/release/dumb_pelican_client
           mv target/$TARGET/release/dumb_pelican_client dumb_pelican_client
 
       - if: steps.next-version.outputs.version != ''
