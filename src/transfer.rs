@@ -48,19 +48,20 @@ impl Transfer {
         }
     }
 
-    fn do_transfer(&self, origin: &PelicanInfo, http_client: &reqwest::blocking::Client) -> Result<(), Box<dyn Error>> {
+    fn do_transfer(
+        &self,
+        origin: &PelicanInfo,
+        http_client: &reqwest::blocking::Client,
+    ) -> Result<(), Box<dyn Error>> {
         let final_url = self.get_origin_url(origin)?;
         log::info!("using final url {}", final_url);
 
-        let send = |x: RequestBuilder| {
-            match x.send() {
-                Ok(x) => Ok(x),
-                Err(e) => {
-                    Err(Box::new(MyError::Transfer(format!(
-                        "Error sending the request: {:?}", e)
-                    )))
-                }
-            }
+        let send = |x: RequestBuilder| match x.send() {
+            Ok(x) => Ok(x),
+            Err(e) => Err(Box::new(MyError::Transfer(format!(
+                "Error sending the request: {:?}",
+                e
+            )))),
         };
 
         let result = match self.mode {
@@ -99,7 +100,9 @@ impl Transfer {
         let cred = creds.get_correct_cred(self, origin)?;
 
         let mut headers = reqwest::header::HeaderMap::new();
-        let mut auth_value = reqwest::header::HeaderValue::from_str(format!("Bearer {}", cred.access_token).as_str())?;
+        let mut auth_value = reqwest::header::HeaderValue::from_str(
+            format!("Bearer {}", cred.access_token).as_str(),
+        )?;
         auth_value.set_sensitive(true);
         headers.insert(reqwest::header::AUTHORIZATION, auth_value);
 
