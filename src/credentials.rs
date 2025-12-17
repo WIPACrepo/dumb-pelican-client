@@ -50,7 +50,7 @@ fn get_cred_dir() -> Result<Vec<String>, Box<dyn std::error::Error>> {
 pub(crate) struct Credential {
     pub access_token: String,
     pub token_type: String,
-    pub expires_in: u32,
+    pub expires_in: i32,
     pub expires_at: f32,
     pub scope: Vec<String>,
 }
