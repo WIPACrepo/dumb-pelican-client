@@ -1,6 +1,6 @@
 use std::error::Error;
-use std::time::Duration;
 use std::thread::sleep;
+use std::time::Duration;
 
 use memoize::memoize;
 use rand::seq::IndexedRandom;
@@ -77,12 +77,16 @@ fn get_director_info(path: String) -> DirectorInfo {
         for retries in 0..5 {
             log::info!("Sending director request. Retry count={}", retries);
             match http_client.get(url).send() {
-                Ok(r) => { return Ok(r) },
+                Ok(r) => return Ok(r),
                 Err(e) => {
                     if retries > 4 {
                         return Err(e);
                     } else {
-                        log::warn!("Error in director request (retry count {}): {:?}", retries, e);
+                        log::warn!(
+                            "Error in director request (retry count {}): {:?}",
+                            retries,
+                            e
+                        );
                     }
                 }
             }
