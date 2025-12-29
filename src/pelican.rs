@@ -1,4 +1,6 @@
 use std::error::Error;
+use std::time::Duration;
+use std::thread::sleep;
 
 use memoize::memoize;
 use rand::seq::IndexedRandom;
@@ -70,10 +72,27 @@ fn get_director_info(path: String) -> DirectorInfo {
         .expect("Client should build");
 
     let director_url = format!("{}{}", OSDF_DIRECTOR, path);
-    let result = http_client
-        .get(director_url)
-        .send()
-        .expect("Cannot contact Pelican director");
+
+    let _do_request = |url: &String| {
+        for retries in 0..5 {
+            log::info!("Sending director request. Retry count={}", retries);
+            match http_client.get(url).send() {
+                Ok(r) => { return Ok(r) },
+                Err(e) => {
+                    if retries > 4 {
+                        return Err(e);
+                    } else {
+                        log::warn!("Error in director request (retry count {}): {:?}", retries, e);
+                    }
+                }
+            }
+            let backoff = Duration::from_millis(100 * 2_u64.pow(retries * 2));
+            sleep(backoff);
+        }
+        panic!("should never reach here");
+    };
+
+    let result = _do_request(&director_url).expect("Cannot contact Pelican director");
 
     match result.status().as_u16() {
         n if n >= 400 => {

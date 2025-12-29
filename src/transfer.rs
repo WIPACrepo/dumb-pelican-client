@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::thread::sleep;
 use std::time::Duration;
 
 use reqwest::blocking::RequestBuilder;
@@ -126,6 +127,8 @@ impl Transfer {
                     }
                 }
             }
+            let backoff = Duration::from_millis(100 * 2_u64.pow(retries * 2));
+            sleep(backoff);
         }
         Ok(())
     }
