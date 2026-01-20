@@ -70,13 +70,23 @@ impl Transfer {
                 let mut ret = send(http_client.get(final_url))?;
                 if !ret.status().is_success() {
                     return Err(Box::new(MyError::Transfer(format!(
-                        "Error getting file. status {}, body {}",
+                        "Error getting file. status {}, body: {}",
                         ret.status(),
                         ret.text().unwrap_or("<no_body>".into())
                     ))));
                 }
                 let mut file = std::fs::File::create(&self.filename)?;
-                ret.copy_to(&mut file)?;
+                match ret.copy_to(&mut file) {
+                    Ok(_) => {},
+                    Err(e) => {
+                        std::fs::remove_file(&self.filename)?;
+                        return Err(Box::new(MyError::Transfer(format!(
+                            "Error transferring file. status {}, err {:?}",
+                            ret.status(),
+                            e
+                        ))));
+                    }
+                };
                 ret
             }
             Verb::Put => {
@@ -88,7 +98,7 @@ impl Transfer {
         // Verify response
         if !result.status().is_success() {
             return Err(Box::new(MyError::Transfer(format!(
-                "Error transferring file. status {}, body {}",
+                "Error transferring file. status {}, body: {}",
                 result.status(),
                 result.text().unwrap_or("<no_body>".into())
             ))));
