@@ -67,7 +67,6 @@ impl Transfer {
 
         let result = match self.mode {
             Verb::Get => {
-                let mut file = std::fs::File::create(&self.filename)?;
                 let mut ret = send(http_client.get(final_url))?;
                 if !ret.status().is_success() {
                     return Err(Box::new(MyError::Transfer(format!(
@@ -76,6 +75,7 @@ impl Transfer {
                         ret.text().unwrap_or("<no_body>".into())
                     ))));
                 }
+                let mut file = std::fs::File::create(&self.filename)?;
                 ret.copy_to(&mut file)?;
                 ret
             }
