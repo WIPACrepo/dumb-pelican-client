@@ -77,7 +77,7 @@ impl Transfer {
                 }
                 let mut file = std::fs::File::create(&self.filename)?;
                 match ret.copy_to(&mut file) {
-                    Ok(_) => {},
+                    Ok(_) => {}
                     Err(e) => {
                         std::fs::remove_file(&self.filename)?;
                         return Err(Box::new(MyError::Transfer(format!(
