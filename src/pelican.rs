@@ -79,7 +79,7 @@ fn get_director_info(path: String) -> DirectorInfo {
             match http_client.get(url).send() {
                 Ok(r) => return Ok(r),
                 Err(e) => {
-                    if retries > 4 {
+                    if retries >= 4 {
                         return Err(e);
                     } else {
                         log::warn!(

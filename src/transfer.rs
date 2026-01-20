@@ -120,7 +120,7 @@ impl Transfer {
             match self.do_transfer(origin, &http_client) {
                 Ok(_) => return Ok(()),
                 Err(e) => {
-                    if retries > 4 {
+                    if retries >= 4 {
                         return Err(e);
                     } else {
                         log::warn!("Error in transfer (retry count {}): {:?}", retries, e);
