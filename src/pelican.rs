@@ -77,25 +77,23 @@ fn get_director_info(path: String) -> DirectorInfo {
         for retries in 0..5 {
             log::info!("Sending director request. Retry count={}", retries);
             match http_client.get(url).send() {
-                Ok(r) => {
-                    match r.status().as_u16() {
-                        n if n >= 400 => {
-                            if retries >= 4 {
-                                let text = match r.text() {
-                                    Ok(t) => t,
-                                    Err(_) => "".into(),
-                                };
-                                panic!("Error finding Pelican Origin: {}", text)
-                            } else {
-                                log::warn!(
-                                    "Error in director request (retry count {}): {:?}",
-                                    retries,
-                                    r.text().unwrap_or("".to_string())
-                                );
-                            }
+                Ok(r) => match r.status().as_u16() {
+                    n if n >= 400 => {
+                        if retries >= 4 {
+                            let text = match r.text() {
+                                Ok(t) => t,
+                                Err(_) => "".into(),
+                            };
+                            panic!("Error finding Pelican Origin: {}", text)
+                        } else {
+                            log::warn!(
+                                "Error in director request (retry count {}): {:?}",
+                                retries,
+                                r.text().unwrap_or("".to_string())
+                            );
                         }
-                        _ => return Ok(r)
                     }
+                    _ => return Ok(r),
                 },
                 Err(e) => {
                     if retries >= 4 {
